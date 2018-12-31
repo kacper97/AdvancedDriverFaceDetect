@@ -1,106 +1,34 @@
-% Create the face detector object.
-faceDetector = vision.CascadeObjectDetector();
+loaded_Image=load_dataset();
+random_Index=round(400*rand(1,1));     
+random_Image=loaded_Image(:,random_Index);        
+rest_of_the_images=loaded_Image(:,[1:random_Index-1 random_Index+1:end]);         
+image_Signature=20;                 
+white_Image=uint8(ones(1,size(rest_of_the_images,2)));
+mean_value=uint8(mean(rest_of_the_images,2));    
+mean_Removed=rest_of_the_images-uint8(single(mean_value)*single(white_Image)); 
+L=single(mean_Removed)'*single(mean_Removed);
+[V,D]=eig(L);
+V=single(mean_Removed)*V;
+V=V(:,end:-1:end-(image_Signature-1));      
+all_image_Signatire=zeros(size(rest_of_the_images,2),image_Signature);
 
-% Create the point tracker object.
-pointTracker = vision.PointTracker('MaxBidirectionalError', 2);
-numPts=0;
-
-% Clear any active camera connections 
-clear cam;
-
-% Create the webcam object.
-cam = webcam();
-
-% Capture one frame to get its size.
-videoFrame = snapshot(cam);
-frameSize = size(videoFrame);
-
-% Create the video player object. 
-videoPlayer = vision.VideoPlayer('Position', [100 100 [frameSize(2), frameSize(1)]+30]);
-run=true;
-while run
-    % Get the next frame.
-    videoFrame = snapshot(cam);
-    % get grey scale image of frame
-   videoFrameGray = rgb2gray(videoFrame);
-
-     % Detect bounding boxs for face from grey image.
-     bbox = faceDetector.step(videoFrameGray);
-     
-     % if we detect faces, insert a rectange into frame
-    if numPts < 10   
-     % Detect bounding boxs for face from grey image.
-     bbox = faceDetector.step(videoFrameGray);
-
-     if ~isempty(bbox)
-                 % Find corner points inside the detected region.
-            points = detectMinEigenFeatures(videoFrameGray, 'ROI', bbox(1, :));
-
-            % Re-initialize the point tracker.
-            xyPoints = points.Location;
-            numPts = size(xyPoints,1);
-            release(pointTracker);
-            initialize(pointTracker, xyPoints, videoFrameGray);
-
-            % Save a copy of the points.
-            oldPoints = xyPoints;
-
-            % Convert the rectangle represented as [x, y, w, h] into an
-            % M-by-2 matrix of [x,y] coordinates of the four corners. This
-            % is needed to be able to transform the bounding box to display
-            % the orientation of the face.
-            bboxPoints = bbox2points(bbox(1, :));  
-
-            % Convert the box corners into the [x1 y1 x2 y2 x3 y3 x4 y4] 
-            % format required by insertShape.
-            bboxPolygon = reshape(bboxPoints', 1, []);
-
-            % Display a bounding box around the detected face.
-            videoFrame = insertShape(videoFrame, 'Polygon', bboxPolygon, 'LineWidth', 3);
-
-            % Display detected corners.
-            videoFrame = insertMarker(videoFrame, xyPoints, '+', 'Color', 'white');
-     end
-
-  else
-      % Tracking mode.
-        [xyPoints, isFound] = step(pointTracker, videoFrameGray);
-        visiblePoints = xyPoints(isFound, :);
-        oldInliers = oldPoints(isFound, :);
-
-        numPts = size(visiblePoints, 1);       
-
-        if numPts >= 10
-            % Estimate the geometric transformation between the old points
-            % and the new points.
-            [xform, oldInliers, visiblePoints] = estimateGeometricTransform(...
-                oldInliers, visiblePoints, 'similarity', 'MaxDistance', 4);            
-
-            % Apply the transformation to the bounding box.
-            bboxPoints = transformPointsForward(xform, bboxPoints);
-
-            % Convert the box corners into the [x1 y1 x2 y2 x3 y3 x4 y4] 
-            % format required by insertShape.
-            bboxPolygon = reshape(bboxPoints', 1, []);            
-
-            % Display a bounding box around the face being tracked.
-            videoFrame = insertShape(videoFrame, 'Polygon', bboxPolygon, 'LineWidth', 3);
-
-            % Display tracked points.
-            videoFrame = insertMarker(videoFrame, visiblePoints, '*', 'Color', 'blue');
-
-            % Reset the points.
-            oldPoints = visiblePoints;
-            setPoints(pointTracker, oldPoints);
-        end
-  end
-    % Display the annotated video frame using the video player object.
-    step(videoPlayer, videoFrame);
-
-     % Check whether the video player window has been closed.
-    run = isOpen(videoPlayer);
+for i=1:size(rest_of_the_images,2);
+    all_image_Signatire(i,:)=single(mean_Removed(:,i))'*V;  
 end
 
-% Clean up.
-clear cam;
-release(videoPlayer);
+subplot(121);
+imshow(reshape(random_Image,112,92));
+title('Looking for this Face','FontWeight','bold','Fontsize',16,'color','red');
+subplot(122);
+p=random_Image-mean_value;
+s=single(p)'*V;
+z=[];
+for i=1:size(rest_of_the_images,2)
+    z=[z,norm(all_image_Signatire(i,:)-s,2)];
+    if(rem(i,20)==0),imshow(reshape(rest_of_the_images(:,i),112,92)),end;
+    drawnow;
+end
+[a,i]=min(z);
+subplot(122);
+imshow(reshape(rest_of_the_images(:,i),112,92));
+title('Recognition Completed','FontWeight','bold','Fontsize',16,'color','red');
